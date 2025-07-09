@@ -10,25 +10,36 @@ def api_sv():
     # === Lấy IP thật ===
     client_ip = request.remote_addr or '127.0.0.1'
 
-    # === Lấy time từ GET hoặc mặc định time() ===
-    client_time = int(request.args.get('time', int(time.time())))
-
-    # === Ưu tiên lấy UID từ header X-Device-UID ===
+    # === Lấy UID từ GET hoặc Header ===
     client_uid = request.args.get('uid', '') or request.headers.get('X-Device-UID', '')
 
     # === Xác định thao tác ===
     thaotac = request.args.get('thaotac', '')
 
+    # === Nếu là time thì trả về như PHP gốc ===
     if thaotac == "time":
         return jsonify({
             'server_time': int(time.time()),
             'ip': client_ip
         })
 
-    # === SECRET chuẩn đồng bộ ===
+    # === Nếu không có time GET thì gọi API PHP để lấy ===
+    time_get = request.args.get('time')
+    if time_get:
+        client_time = int(time_get)
+    else:
+        try:
+            php_time = requests.get('https://hoangdaixu.x10.bz/api-sv.php?thaotac=time', timeout=5).json()
+            client_time = int(php_time.get('server_time', int(time.time())))
+            # Override IP nếu PHP trả IP khác
+            client_ip = php_time.get('ip', client_ip)
+        except:
+            client_time = int(time.time())
+
+    # === SECRET ===
     secret = 'HHOannGdAIIxu'
 
-    # === Tạo RAW string ===
+    # === RAW string ===
     raw_string = f"{secret}|{client_time}|{client_uid}|{client_ip}"
 
     # === Hash SHA256 và cắt 12 ký tự ===
@@ -56,7 +67,6 @@ def api_sv():
             "curl_error": str(e)
         })
 
-    # === Xử lý kết quả ===
     if data.get('status') == 'success':
         short_link = data['shortenedUrl']
         return jsonify({
